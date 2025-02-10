@@ -16,6 +16,8 @@ RUN apk add -U iproute2
 # Set working dir
 WORKDIR /free5gc
 RUN mkdir -p config/ log/ cert/
+RUN apk update && \
+    apk add tshark iproute2 iputils tcpdump
 
 # Copy executable and default certs
 COPY --from=builder /free5gc/${F5GC_MODULE} ./

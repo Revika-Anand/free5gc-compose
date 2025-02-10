@@ -23,15 +23,15 @@ configuration:
       dnnInfos: # DNN information list
         - dnn: internet # Data Network Name
           dns: # the IP address of DNS
-            ipv4: 8.8.8.8
+            ipv4: 1.1.1.1
             ipv6: 2001:4860:4860::8888
     - sNssai: # S-NSSAI (Single Network Slice Selection Assistance Information)
         sst: 1 # Slice/Service Type (uinteger, range: 0~255)
         sd: 112233 # Slice Differentiator (3 bytes hex string, range: 000000~FFFFFF)
       dnnInfos: # DNN information list
-        - dnn: internet # Data Network Name
+        - dnn: test # Data Network Name
           dns: # the IP address of DNS
-            ipv4: 8.8.8.8
+            ipv4: 1.1.1.1
             ipv6: 2001:4860:4860::8888
   plmnList: # the list of PLMN IDs that this SMF belongs to (optional, remove this key when unnecessary)
     - mcc: 208 # Mobile Country Code (3 digits string, digit: 0~9)
@@ -46,10 +46,16 @@ configuration:
     upNodes: # information of userplane node (AN or UPF)
       gNB1: # the name of the node
         type: AN # the type of the node (AN or UPF)
-      UPF: # the name of the node
+        nodeID: gnb1.free5gc.org
+        addr: gnb1.free5gc.org
+      gNB2:
+        type: AN
+        nodeID: gnb2.free5gc.org
+        addr: gnb2.free5gc.org
+      UPF1: # the name of the node
         type: UPF # the type of the node (AN or UPF)
-        nodeID: upf.free5gc.org # the Node ID of this UPF
-        addr: upf.free5gc.org # the IP/FQDN of N4 interface on this UPF (PFCP)
+        nodeID: upf1.free5gc.org # the Node ID of this UPF
+        addr: upf1.free5gc.org # the IP/FQDN of N4 interface on this UPF (PFCP)
         sNssaiUpfInfos: # S-NSSAI information list for this UPF
           - sNssai: # S-NSSAI (Single Network Slice Selection Assistance Information)
               sst: 1 # Slice/Service Type (uinteger, range: 0~255)
@@ -60,11 +66,41 @@ configuration:
                   - cidr: 10.60.0.0/16
                 staticPools:
                   - cidr: 10.60.100.0/24
+          # - sNssai: # S-NSSAI (Single Network Slice Selection Assistance Information)
+          #     sst: 1 # Slice/Service Type (uinteger, range: 0~255)
+          #     sd: 112233 # Slice Differentiator (3 bytes hex string, range: 000000~FFFFFF)
+          #   dnnUpfInfoList: # DNN information list for this S-NSSAI
+          #     - dnn: test
+          #       pools:
+          #         - cidr: 10.61.0.0/16
+          #       staticPools:
+          #         - cidr: 10.61.100.0/24
+        interfaces: # Interface list for this UPF
+          - interfaceType: N3 # the type of the interface (N3 or N9)
+            endpoints: # the IP address of this N3/N9 interface on this UPF
+              - upf1.free5gc.org
+            networkInstances: # Data Network Name (DNN)
+              - internet
+              # - test
+      UPF2: # the name of the node
+        type: UPF # the type of the node (AN or UPF)
+        nodeID: upf2.free5gc.org # 10.103.200.2 # the Node ID of this UPF
+        addr: upf2.free5gc.org # 10.103.200.2 # the IP/FQDN of N4 interface on this UPF (PFCP)
+        sNssaiUpfInfos: # S-NSSAI information list for this UPF
+          # - sNssai: # S-NSSAI (Single Network Slice Selection Assistance Information)
+          #     sst: 1 # Slice/Service Type (uinteger, range: 0~255)
+          #     sd: 010203 # Slice Differentiator (3 bytes hex string, range: 000000~FFFFFF)
+          #   dnnUpfInfoList: # DNN information list for this S-NSSAI
+          #     - dnn: internet
+          #       pools:
+          #         - cidr: 10.60.0.0/16
+          #       staticPools:
+          #         - cidr: 10.60.100.0/24
           - sNssai: # S-NSSAI (Single Network Slice Selection Assistance Information)
               sst: 1 # Slice/Service Type (uinteger, range: 0~255)
               sd: 112233 # Slice Differentiator (3 bytes hex string, range: 000000~FFFFFF)
             dnnUpfInfoList: # DNN information list for this S-NSSAI
-              - dnn: internet
+              - dnn: test
                 pools:
                   - cidr: 10.61.0.0/16
                 staticPools:
@@ -72,12 +108,15 @@ configuration:
         interfaces: # Interface list for this UPF
           - interfaceType: N3 # the type of the interface (N3 or N9)
             endpoints: # the IP address of this N3/N9 interface on this UPF
-              - upf.free5gc.org
+              - upf2.free5gc.org
             networkInstances: # Data Network Name (DNN)
-              - internet
+              # - internet
+              - test
     links: # the topology graph of userplane, A and B represent the two nodes of each link
       - A: gNB1
-        B: UPF
+        B: UPF1
+      - A: gNB2
+        B: UPF2
   # retransmission timer for pdu session modification command
   t3591:
     enable: true # true or false

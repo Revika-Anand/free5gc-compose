@@ -17,7 +17,7 @@ FROM bitnami/minideb:bullseye
 ENV DEBIAN_FRONTEND noninteractive
 
 RUN apt-get update \
-    && apt-get install libsctp-dev lksctp-tools iproute2 iputils-ping procps psmisc tcpdump sudo -y \
+    && apt-get install libsctp-dev tshark lksctp-tools iproute2 iputils-ping procps psmisc tcpdump sudo -y \
     && apt-get clean
 
 WORKDIR /n3iwue

@@ -1,26 +1,110 @@
-version: "3.8"
+# version: "3.8"
+
+name: free5gc
 
 services:
-  free5gc-upf:
-    container_name: upf
+  auto-verif:
+    container_name: auto-verif
+    build:
+      context: ../
+      dockerfile: Dockerfile
+    privileged: true
+    ports:
+      - "8090:8090"
+    command: go run .
+    volumes:
+      - /home/demo/AutoVerif/free5gc-compose/config:/app/src/pkg/config
+    networks:
+      privnet:
+        ipv4_address: 10.100.200.40
+
+  iperf-server:
+    container_name: iperf-server
+    build:
+      context: ./iperf3
+      dockerfile: Dockerfile
+    privileged: true
+    ports:
+      - "5001:5001"
+    networks:
+      public:
+        ipv4_address: 10.101.200.30 # 10.5.0.2
+      private:
+        ipv4_address: 10.102.200.30 # 10.6.0.2
+    dns_search: .
+    stdin_open: true
+    tty: true
+    entrypoint: ["/bin/sh", "-c"]
+    command: 
+    - |
+        ip rule add from 10.101.200.30 table 1
+        ip rule add from 10.102.200.30 table 2
+        ip route add 10.102.200.0/24 dev eth0 scope link table 2
+        ip route add 10.101.200.0/24 dev eth1 scope link table 1
+        ip route add default via 10.101.200.20 dev eth1 table 1
+        ip route add default via 10.102.200.20 dev eth0 table 2
+        ip mptcp limits set subflow 2 add_addr_accepted 2
+        ip mptcp endpoint add 10.102.200.30 dev eth0 signal
+        ip mptcp endpoint add 10.101.200.30 dev eth1 signal
+        route add -net 10.60.0.0/24 gw 10.101.200.20
+        route add -net 10.61.0.0/24 gw 10.102.200.20
+        tshark -i eth0 -i eth1 -w /logs/iperf.pcap -t a -f "not (arp or tcp or udp) or (tcp port 5001)" -s 96
+    volumes:
+      - /home/demo/AutoVerif/free5gc-compose/logs:/logs
+
+  free5gc-upf1:
+    container_name: upf1
     build:
       context: ./nf_upf
       args:
-        DEBUG_TOOLS: "false"
-    command: bash -c "./upf-iptables.sh && ./upf -c ./config/upfcfg.yaml"
+        DEBUG_TOOLS: "true"
+    entrypoint: ["/bin/sh", "-c"]
+    command: 
+    - |
+        bash -c "./upf-iptables.sh && ./upf -c ./config/upfcfg.yaml" &
+        tshark -w ./logs/upf1.pcap -t a -i eth0 -f "not (arp or tcp or udp) or (tcp port 5001)"
     volumes:
-      - ./config/upfcfg.yaml:/free5gc/config/upfcfg.yaml
-      - ./config/upf-iptables.sh:/free5gc/upf-iptables.sh
+      - /home/demo/AutoVerif/free5gc-compose/config/upfcfg1.yaml:/free5gc/config/upfcfg.yaml
+      - /home/demo/AutoVerif/free5gc-compose/config/upf-iptables.sh:/free5gc/upf-iptables.sh
+      - /home/demo/AutoVerif/free5gc-compose/logs:/free5gc/logs
     cap_add:
       - NET_ADMIN
     networks:
       privnet:
         aliases:
-          - upf.free5gc.org
+          - upf1.free5gc.org
+      public:
+        ipv4_address: 10.101.200.20
+
+  free5gc-upf2:
+    container_name: upf2
+    build:
+      context: ./nf_upf
+      args:
+        DEBUG_TOOLS: "true"
+    entrypoint: ["/bin/sh", "-c"]
+    command: 
+    - |
+        bash -c "./upf-iptables.sh && ./upf -c ./config/upfcfg.yaml" &
+        tshark -w ./logs/upf2.pcap -t a -i eth0 -i eth1 -f "not (arp or tcp or udp) or (tcp port 5001)"
+    volumes:
+      - /home/demo/AutoVerif/free5gc-compose/config/upfcfg2.yaml:/free5gc/config/upfcfg.yaml
+      - /home/demo/AutoVerif/free5gc-compose/config/upf-iptables.sh:/free5gc/upf-iptables.sh
+      - /home/demo/AutoVerif/free5gc-compose/logs:/free5gc/logs
+    cap_add:
+      - NET_ADMIN
+    networks:
+      privnet:
+        aliases:
+          - upf2.free5gc.org
+      private:
+        ipv4_address: 10.102.200.20
+      # public:
+      #   ipv4_address: 10.101.200.21
 
   db:
     container_name: mongodb
-    image: mongo:3.6.8
+    image: mongo
     command: mongod --port 27017
     expose:
       - "27017"
@@ -37,12 +121,18 @@ services:
       context: ./nf_nrf
       args:
         DEBUG_TOOLS: "false"
-    command: ./nrf -c ./config/nrfcfg.yaml
+    entrypoint: ["/bin/sh", "-c"]
+    privileged: true
+    command: 
+    - |
+        ./nrf -c ./config/nrfcfg.yaml &
+        tshark -w ./logs/nrf.pcap -t a -i eth0 -f "not (arp or icmp6 or tcp or udp) or (tcp port 5001)"
     expose:
       - "8000"
     volumes:
-      - ./config/nrfcfg.yaml:/free5gc/config/nrfcfg.yaml
-      - ./cert:/free5gc/cert
+      - /home/demo/AutoVerif/free5gc-compose/config/nrfcfg.yaml:/free5gc/config/nrfcfg.yaml
+      - /home/demo/AutoVerif/free5gc-compose/cert:/free5gc/cert
+      - /home/demo/AutoVerif/free5gc-compose/logs:/free5gc/logs
     environment:
       DB_URI: mongodb://db/free5gc
       GIN_MODE: release
@@ -52,6 +142,7 @@ services:
           - nrf.free5gc.org
     depends_on:
       - db
+      - iperf-server
 
   free5gc-amf:
     container_name: amf
@@ -59,14 +150,24 @@ services:
       context: ./nf_amf
       args:
         DEBUG_TOOLS: "false"
-    command: ./amf -c ./config/amfcfg.yaml
+    entrypoint: ["/bin/sh", "-c"]
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    command: 
+    - |
+        ./amf -c ./config/amfcfg.yaml &
+        tshark -w ./logs/amf.pcap -t a -i eth0 -f "not (arp or icmp6 or tcp or udp) or (tcp port 5001)"
     expose:
       - "8000"
     volumes:
-      - ./config/amfcfg.yaml:/free5gc/config/amfcfg.yaml
-      - ./cert:/free5gc/cert
+      - /home/demo/AutoVerif/free5gc-compose/config/amfcfg.yaml:/free5gc/config/amfcfg.yaml
+      - /home/demo/AutoVerif/free5gc-compose/cert:/free5gc/cert
+      - /home/demo/AutoVerif/free5gc-compose/logs:/free5gc/logs
     environment:
       GIN_MODE: release
+    devices:
+      - "/dev/net/tun"
     networks:
       privnet:
         ipv4_address: 10.100.200.16
@@ -74,6 +175,8 @@ services:
           - amf.free5gc.org
     depends_on:
       - free5gc-nrf
+      - iperf-server
+      # - free5gc-n3iwf
 
   free5gc-ausf:
     container_name: ausf
@@ -81,12 +184,18 @@ services:
       context: ./nf_ausf
       args:
         DEBUG_TOOLS: "false"
-    command: ./ausf -c ./config/ausfcfg.yaml
+    privileged: true
+    entrypoint: ["/bin/sh", "-c"]
+    command: 
+    - |
+        ./ausf -c ./config/ausfcfg.yaml &
+        tshark -w ./logs/ausf.pcap -t a -i eth0 -f "not (arp or icmp6 or tcp or udp) or (tcp port 5001)"
     expose:
       - "8000"
     volumes:
-      - ./config/ausfcfg.yaml:/free5gc/config/ausfcfg.yaml
-      - ./cert:/free5gc/cert
+      - /home/demo/AutoVerif/free5gc-compose/config/ausfcfg.yaml:/free5gc/config/ausfcfg.yaml
+      - /home/demo/AutoVerif/free5gc-compose/cert:/free5gc/cert
+      - /home/demo/AutoVerif/free5gc-compose/logs:/free5gc/logs
     environment:
       GIN_MODE: release
     networks:
@@ -95,6 +204,7 @@ services:
           - ausf.free5gc.org
     depends_on:
       - free5gc-nrf
+      - iperf-server
 
   free5gc-nssf:
     container_name: nssf
@@ -102,12 +212,18 @@ services:
       context: ./nf_nssf
       args:
         DEBUG_TOOLS: "false"
-    command: ./nssf -c ./config/nssfcfg.yaml
+    privileged: true
+    entrypoint: ["/bin/sh", "-c"]
+    command: 
+    - |
+        ./nssf -c ./config/nssfcfg.yaml &
+        tshark -w ./logs/nssf.pcap -t a -i eth0 -f "not (arp or icmp6 or tcp or udp) or (tcp port 5001)"
     expose:
       - "8000"
     volumes:
-      - ./config/nssfcfg.yaml:/free5gc/config/nssfcfg.yaml
-      - ./cert:/free5gc/cert
+      - /home/demo/AutoVerif/free5gc-compose/config/nssfcfg.yaml:/free5gc/config/nssfcfg.yaml
+      - /home/demo/AutoVerif/free5gc-compose/cert:/free5gc/cert
+      - /home/demo/AutoVerif/free5gc-compose/logs:/free5gc/logs
     environment:
       GIN_MODE: release
     networks:
@@ -116,6 +232,7 @@ services:
           - nssf.free5gc.org
     depends_on:
       - free5gc-nrf
+      - iperf-server
 
   free5gc-pcf:
     container_name: pcf
@@ -123,12 +240,18 @@ services:
       context: ./nf_pcf
       args:
         DEBUG_TOOLS: "false"
-    command: ./pcf -c ./config/pcfcfg.yaml
+    privileged: true
+    entrypoint: ["/bin/sh", "-c"]
+    command: 
+    - |
+        ./pcf -c ./config/pcfcfg.yaml &
+        tshark -w ./logs/pcf.pcap -t a -i eth0 -f "not (arp or icmp6 or tcp or udp) or (tcp port 5001)"
     expose:
       - "8000"
     volumes:
-      - ./config/pcfcfg.yaml:/free5gc/config/pcfcfg.yaml
-      - ./cert:/free5gc/cert
+      - /home/demo/AutoVerif/free5gc-compose/config/pcfcfg.yaml:/free5gc/config/pcfcfg.yaml
+      - /home/demo/AutoVerif/free5gc-compose/cert:/free5gc/cert
+      - /home/demo/AutoVerif/free5gc-compose/logs:/free5gc/logs
     environment:
       GIN_MODE: release
     networks:
@@ -137,6 +260,7 @@ services:
           - pcf.free5gc.org
     depends_on:
       - free5gc-nrf
+      - iperf-server
 
   free5gc-smf:
     container_name: smf
@@ -144,22 +268,34 @@ services:
       context: ./nf_smf
       args:
         DEBUG_TOOLS: "false"
-    command: ./smf -c ./config/smfcfg.yaml -u ./config/uerouting.yaml
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    entrypoint: ["/bin/sh", "-c"]
+    command: 
+    - |
+        ./smf -c ./config/smfcfg.yaml -u ./config/uerouting.yaml &
+        tshark -w ./logs/smf.pcap -t a -i eth0 -f "not (arp or icmp6 or tcp or udp) or (tcp port 5001)"
     expose:
       - "8000"
     volumes:
-      - ./config/smfcfg.yaml:/free5gc/config/smfcfg.yaml
-      - ./config/uerouting.yaml:/free5gc/config/uerouting.yaml
-      - ./cert:/free5gc/cert
+      - /home/demo/AutoVerif/free5gc-compose/config/smfcfg.yaml:/free5gc/config/smfcfg.yaml
+      - /home/demo/AutoVerif/free5gc-compose/config/uerouting.yaml:/free5gc/config/uerouting.yaml
+      - /home/demo/AutoVerif/free5gc-compose/cert:/free5gc/cert
+      - /home/demo/AutoVerif/free5gc-compose/logs:/free5gc/logs
     environment:
       GIN_MODE: release
+    devices:
+      - "/dev/net/tun"
     networks:
       privnet:
         aliases:
           - smf.free5gc.org
     depends_on:
       - free5gc-nrf
-      - free5gc-upf
+      - free5gc-upf1
+      - free5gc-upf2
+      - iperf-server
 
   free5gc-udm:
     container_name: udm
@@ -167,12 +303,18 @@ services:
       context: ./nf_udm
       args:
         DEBUG_TOOLS: "false"
-    command: ./udm -c ./config/udmcfg.yaml
+    privileged: true
+    entrypoint: ["/bin/sh", "-c"]
+    command: 
+    - |
+        ./udm -c ./config/udmcfg.yaml &
+        tshark -w ./logs/udm.pcap -t a -i eth0 -f "not (arp or icmp6 or tcp or udp) or (tcp port 5001)"
     expose:
       - "8000"
     volumes:
-      - ./config/udmcfg.yaml:/free5gc/config/udmcfg.yaml
-      - ./cert:/free5gc/cert
+      - /home/demo/AutoVerif/free5gc-compose/config/udmcfg.yaml:/free5gc/config/udmcfg.yaml
+      - /home/demo/AutoVerif/free5gc-compose/cert:/free5gc/cert
+      - /home/demo/AutoVerif/free5gc-compose/logs:/free5gc/logs
     environment:
       GIN_MODE: release
     networks:
@@ -182,6 +324,7 @@ services:
     depends_on:
       - db
       - free5gc-nrf
+      - iperf-server
 
   free5gc-udr:
     container_name: udr
@@ -189,12 +332,18 @@ services:
       context: ./nf_udr
       args:
         DEBUG_TOOLS: "false"
-    command: ./udr -c ./config/udrcfg.yaml
+    privileged: true
+    entrypoint: ["/bin/sh", "-c"]
+    command: 
+    - |
+        ./udr -c ./config/udrcfg.yaml &
+        tshark -w ./logs/udr.pcap -t a -i eth0 -f "not (arp or icmp6 or tcp or udp) or (tcp port 5001)"
     expose:
       - "8000"
     volumes:
-      - ./config/udrcfg.yaml:/free5gc/config/udrcfg.yaml
-      - ./cert:/free5gc/cert
+      - /home/demo/AutoVerif/free5gc-compose/config/udrcfg.yaml:/free5gc/config/udrcfg.yaml
+      - /home/demo/AutoVerif/free5gc-compose/cert:/free5gc/cert
+      - /home/demo/AutoVerif/free5gc-compose/logs:/free5gc/logs
     environment:
       DB_URI: mongodb://db/free5gc
       GIN_MODE: release
@@ -205,6 +354,7 @@ services:
     depends_on:
       - db
       - free5gc-nrf
+      - iperf-server
 
   free5gc-chf:
     container_name: chf
@@ -212,13 +362,19 @@ services:
       context: ./nf_chf
       args:
         DEBUG_TOOLS: "false"
-    command: ./chf -c ./config/chfcfg.yaml
+    entrypoint: ["/bin/sh", "-c"]
+    privileged: true
+    command: 
+    - |
+        ./chf -c ./config/chfcfg.yaml &
+        tshark -w ./logs/chf.pcap -t a -i eth0 -f "not (arp or icmp6 or tcp or udp) or (tcp port 5001)"
     expose:
       - "8000"
       - "2122"
     volumes:
-      - ./config/chfcfg.yaml:/free5gc/config/chfcfg.yaml
-      - ./cert:/free5gc/cert
+      - /home/demo/AutoVerif/free5gc-compose/config/chfcfg.yaml:/free5gc/config/chfcfg.yaml
+      - /home/demo/AutoVerif/free5gc-compose/cert:/free5gc/cert
+      - /home/demo/AutoVerif/free5gc-compose/logs:/free5gc/logs
     environment:
       DB_URI: mongodb://db/free5gc
       GIN_MODE: release
@@ -230,6 +386,7 @@ services:
       - db
       - free5gc-nrf
       - free5gc-webui
+      - iperf-server
 
   free5gc-n3iwf:
     container_name: n3iwf
@@ -237,10 +394,16 @@ services:
       context: ./nf_n3iwf
       args:
         DEBUG_TOOLS: "false"
-    command: ./n3iwf -c ./config/n3iwfcfg.yaml
+    entrypoint: ["/bin/sh", "-c"]
+    privileged: true
+    command: 
+    - |
+        sh -c "./n3iwf-ipsec.sh && ./n3iwf -c ./config/n3iwfcfg.yaml" &
+        tshark -w ./logs/n3iwf.pcap -t a -f "not (arp or icmp6 or tcp or udp) or (tcp port 5001)"
     volumes:
-      - ./config/n3iwfcfg.yaml:/free5gc/config/n3iwfcfg.yaml
-      - ./config/n3iwf-ipsec.sh:/free5gc/n3iwf-ipsec.sh
+      - /home/demo/AutoVerif/free5gc-compose/config/n3iwfcfg.yaml:/free5gc/config/n3iwfcfg.yaml
+      - /home/demo/AutoVerif/free5gc-compose/config/n3iwf-ipsec.sh:/free5gc/n3iwf-ipsec.sh
+      - /home/demo/AutoVerif/free5gc-compose/logs:/free5gc/logs
     environment:
       GIN_MODE: release
     cap_add:
@@ -253,49 +416,8 @@ services:
     depends_on:
       - free5gc-amf
       - free5gc-smf
-      - free5gc-upf
-
-  free5gc-tngf:
-    container_name: tngf
-    build:
-      context: ./nf_tngf
-      args:
-        DEBUG_TOOLS: "false"
-    command: ./tngf -c ./config/tngfcfg.yaml
-    volumes:
-      - ./config/tngfcfg.yaml:/free5gc/config/tngfcfg.yaml
-      - ./cert:/free5gc/cert
-    environment:
-      GIN_MODE: release
-    cap_add:
-      - NET_ADMIN
-    network_mode: host
-    depends_on:
-      - free5gc-amf
-      - free5gc-smf
-      - free5gc-upf
-
-  free5gc-nef:
-    container_name: nef
-    build:
-      context: ./nf_nef
-      args:
-        DEBUG_TOOLS: "false"
-    command: ./nef -c ./config/nefcfg.yaml
-    expose:
-      - "8000"
-    volumes: 
-      - ./config/nefcfg.yaml:/free5gc/config/nefcfg.yaml
-      - ./cert:/free5gc/cert
-    environment:
-      GIN_MODE: release
-    networks:
-      privnet:
-        aliases:
-          - nef.free5gc.org
-    depends_on:
-      - db
-      - free5gc-nrf
+      - free5gc-upf1
+      - free5gc-upf2
 
   free5gc-webui:
     container_name: webui
@@ -307,7 +429,7 @@ services:
     expose:
       - "2121"
     volumes:
-      - ./config/webuicfg.yaml:/free5gc/config/webuicfg.yaml
+      - /home/demo/AutoVerif/free5gc-compose/config/webuicfg.yaml:/free5gc/config/webuicfg.yaml
     environment:
       - GIN_MODE=release
     networks:
@@ -319,15 +441,75 @@ services:
     depends_on:
       - db
       - free5gc-nrf
+      - iperf-server
+
+  gnb1:
+    container_name: gnb1
+    build:
+      context: ./ueransim
+    entrypoint: ["/bin/sh", "-c"]
+    command: 
+    - |
+        ./nr-gnb -c ./config/gnbcfg.yaml &
+        tshark -w ./logs/gnb1.pcap -t a -f "not (arp or icmp6 or tcp or udp) or (tcp port 5001)"
+    volumes:
+      - /home/demo/AutoVerif/free5gc-compose/config/gnbcfg.yaml:/ueransim/config/gnbcfg.yaml
+      - /home/demo/AutoVerif/free5gc-compose/logs:/ueransim/logs
+      # - ./config/uecfg.yaml:/ueransim/config/uecfg.yaml
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - "/dev/net/tun"
+    networks:
+      privnet:
+        aliases:
+          - gnb1.free5gc.org
+    depends_on:
+      - free5gc-amf
+      - free5gc-upf1
+      - free5gc-upf2
+      - iperf-server
+      - free5gc-n3iwf
+
+  gnb2:
+    container_name: gnb2
+    build:
+      context: ./ueransim
+    entrypoint: ["/bin/sh", "-c"]
+    command: 
+    - |
+        ./nr-gnb -c ./config/gnbcfg.yaml &
+        tshark -w ./logs/gnb2.pcap -t a -f "not (arp or icmp6 or tcp or udp) or (tcp port 5001)"
+    volumes:
+      - /home/demo/AutoVerif/free5gc-compose/config/gnbcfgtest.yaml:/ueransim/config/gnbcfg.yaml
+      - /home/demo/AutoVerif/free5gc-compose/logs:/ueransim/logs
+      # - ./config/uecfg.yaml:/ueransim/config/uecfg.yaml
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - "/dev/net/tun"
+    networks:
+      privnet:
+        aliases:
+          - gnb2.free5gc.org
+    depends_on:
+      - free5gc-amf
+      - free5gc-upf1
+      - free5gc-upf2
+      - iperf-server     
+      - free5gc-n3iwf
 
   ueransim:
     container_name: ueransim
     build:
       context: ./ueransim
-    command: ./nr-gnb -c ./config/gnbcfg.yaml
+    entrypoint: /ueransim/config/entrypoint.sh
+    # command: tail -f /var/log/dpkg.log
     volumes:
-      - ./config/gnbcfg.yaml:/ueransim/config/gnbcfg.yaml
-      - ./config/uecfg.yaml:/ueransim/config/uecfg.yaml
+      - /home/demo/AutoVerif/free5gc-compose/config/ue1.yaml:/ueransim/config/uecfg1.yaml
+      - /home/demo/AutoVerif/free5gc-compose/config/ue2.yaml:/ueransim/config/uecfg2.yaml
+      - /home/demo/AutoVerif/free5gc-compose/ueransim/entrypoint.sh:/ueransim/config/entrypoint.sh
+      - /home/demo/AutoVerif/free5gc-compose/logs:/ueransim/logs
     cap_add:
       - NET_ADMIN
     devices:
@@ -335,38 +517,56 @@ services:
     networks:
       privnet:
         aliases:
-          - gnb.free5gc.org
+          - ueransim.free5gc.org
     depends_on:
       - free5gc-amf
-      - free5gc-upf
+      - free5gc-upf1
+      - free5gc-upf2
+      - gnb1
+      - gnb2
+      - iperf-server
 
   n3iwue:
     container_name: n3iwue
     build:
       context: ./n3iwue
-    command: bash -c "ip route del default && ip route add default via 10.100.200.1 dev eth0 metric 203 && sleep infinity"
+    command: sleep infinity
     volumes:
-      - ./config/n3uecfg.yaml:/n3iwue/config/n3ue.yaml
+      - /home/demo/AutoVerif/free5gc-compose/config/n3uecfg.yaml:/n3iwue/config/n3ue.yaml
     cap_add:
       - NET_ADMIN
     devices:
       - "/dev/net/tun"
     networks:
       privnet:
-        ipv4_address: 10.100.200.203
+        # ipv4_address: 10.100.200.203
         aliases:
           - n3ue.free5gc.org
     depends_on:
       - free5gc-n3iwf
+      - iperf-server
 
 networks:
   privnet:
+    attachable: true
     ipam:
       driver: default
       config:
         - subnet: 10.100.200.0/24
     driver_opts:
       com.docker.network.bridge.name: br-free5gc
+  public:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.101.200.0/24
+          gateway: 10.101.200.1
+  private:
+    driver: bridge
+    ipam:
+      config:
+       - subnet: 10.102.200.0/24
+         gateway: 10.102.200.1
 
 volumes:
   dbdata:
