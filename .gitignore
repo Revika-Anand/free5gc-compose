@@ -6,6 +6,8 @@ base/free5gc
 
 # cert
 cert/*_*.pem
+cert/*.key
+cert/*.pem
 
 # log
 logs/*.pcap
