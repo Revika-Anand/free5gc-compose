@@ -14,7 +14,7 @@ RUN if [ "$DEBUG_TOOLS" = "true" ] ; then apk add -U vim strace net-tools curl n
 WORKDIR /free5gc
 RUN mkdir -p config/ log/ cert/
 RUN apk update && \
-    apk add tshark iproute2 iputils tcpdump
+    apk add tshark iproute2 iputils tcpdump jq
 
 # Copy executable and default certs
 COPY --from=builder /free5gc/${F5GC_MODULE} ./
@@ -30,6 +30,6 @@ VOLUME [ "/free5gc/cert" ]
 # Exposed ports
 EXPOSE 8000
 
-# CGF FTP server listen on port 2122 
+# CGF FTP server listen on port 2122
 # Webui billingDomain FTP server use 2121
 EXPOSE 2122

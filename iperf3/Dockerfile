@@ -8,9 +8,9 @@ RUN apt-get update && \
 	apt-get dist-upgrade -y && \
 	DEBIAN_FRONTEND=noninteractive \
 	apt-get install -y --no-install-recommends iproute2 python3 curl tar sudo git \
-		iputils-ping ethtool net-tools kmod tshark tcpdump apt-transport-https ca-certificates\
+		iputils-ping ethtool net-tools kmod tshark tcpdump apt-transport-https ca-certificates dnsutils\
 		iptables ebtables nftables vim psmisc bash-completion less jq tmux \
-		wget mptcpize build-essential \
+		wget mptcpize build-essential\
 		&& \
 	apt-get clean
 

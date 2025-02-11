@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# upf1=$(dig @10.102.200.50 +noall +answer upf1.free5gc.org A | awk '{ print $5 }')
+# upf2=$(dig @10.102.200.50 +noall +answer upf2.free5gc.org A | awk '{ print $5 }')
+
 # ip rule add from 10.101.200.30 table 1
 # ip rule add from 10.102.200.30 table 2
 # ip route add 10.102.200.0/24 dev eth0 scope link table 2
