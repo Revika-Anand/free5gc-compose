@@ -4,5 +4,8 @@
 mongodb
 base/free5gc
 
+# Logs
+logs/
+
 # cert
 cert/*_*.pem
