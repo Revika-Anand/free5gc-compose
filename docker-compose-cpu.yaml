@@ -68,18 +68,28 @@ services:
                 route add -net 10.61.0.0/24 gw 10.102.200.40
                 route add -net 10.101.200.0/24 gw 10.102.200.40
                 route add -net 10.100.200.0/24 gw 10.102.200.40
-                iperf3 -s -p 5001 -i 1 &
-                iperf3 -s -p 5002 -i 1 &
-                iperf3 -s -p 5003 -i 1 &
-                iperf3 -s -p 5004 -i 1 &
-                iperf3 -s -p 5005 -i 1 &
-                iperf3 -s -p 5006 -i 1 &
-                iperf3 -s -p 5007 -i 1 &
-                iperf3 -s -p 5008 -i 1 &
-                iperf3 -s -p 5009 -i 1 &
-                iperf3 -s -p 5010 -i 1
-        # volumes:
-        #     - ./logs:/logs
+                iperf3 -s -p 5001 -i 1 & # > /iperf-results/p1.txt &
+                iperf3 -s -p 5002 -i 1 & # > /iperf-results/p2.txt &
+                iperf3 -s -p 5003 -i 1 & # > /iperf-results/p3.txt &
+                iperf3 -s -p 5004 -i 1 & # > /iperf-results/p4.txt &
+                iperf3 -s -p 5005 -i 1 & # > /iperf-results/p5.txt &
+                iperf3 -s -p 5006 -i 1 & # > /iperf-results/p6.txt &
+                iperf3 -s -p 5007 -i 1 & # > /iperf-results/p7.txt &
+                iperf3 -s -p 5008 -i 1 & # > /iperf-results/p8.txt &
+                iperf3 -s -p 5009 -i 1 & # > /iperf-results/p9.txt &
+                iperf3 -s -p 5010 -i 1 & # > /iperf-results/p10.txt
+                iperf3 -s -p 5011 -i 1 & # > /iperf-results/p11.txt &
+                iperf3 -s -p 5012 -i 1 & # > /iperf-results/p12.txt &
+                iperf3 -s -p 5013 -i 1 & # > /iperf-results/p13.txt &
+                iperf3 -s -p 5014 -i 1 & # > /iperf-results/p14.txt &
+                iperf3 -s -p 5015 -i 1 & # > /iperf-results/p15.txt
+                iperf3 -s -p 5016 -i 1 & # > /iperf-results/p16.txt &
+                iperf3 -s -p 5017 -i 1 & # > /iperf-results/p17.txt &
+                iperf3 -s -p 5018 -i 1 & # > /iperf-results/p18.txt &
+                iperf3 -s -p 5019 -i 1 & # > /iperf-results/p19.txt &
+                iperf3 -s -p 5020 -i 1 # > /iperf-results/p20.txt
+        volumes:
+            - ./logs/iperf-results:/iperf-results
 
     free5gc-upf1:
         container_name: upf1
@@ -548,15 +558,15 @@ services:
             # - iperf-server
             - free5gc-n3iwf
 
-    ueransim:
-        container_name: ueransim
+    ueransim1:
+        container_name: ueransim1
         build:
             context: ./ueransim
         entrypoint: /ueransim/config/entrypoint.sh
         dns: 10.100.200.50
         # command: tail -f /var/log/dpkg.log
         volumes:
-            - ./config/ue/ue1.yaml:/ueransim/config/uecfg1.yaml
+            - ./config/ue/ue1.yaml:/ueransim/config/uecfg.yaml
             # - ./config/ue/ue2.yaml:/ueransim/config/uecfg2.yaml
             # - ./config/ue/ue3.yaml:/ueransim/config/uecfg3.yaml
             - ./ueransim/entrypoint.sh:/ueransim/config/entrypoint.sh
@@ -569,14 +579,105 @@ services:
         networks:
             ground:
                 aliases:
-                    - ueransim.free5gc.org
+                    - ueransim1.free5gc.org
+        depends_on:
+            - free5gc-amf
+            - free5gc-upf1
+            - free5gc-upf2
+            - free5gc-smf
+            - gnb1
+            - gnb2
+            # - iperf-server
+
+    ueransim2:
+        container_name: ueransim2
+        build:
+            context: ./ueransim
+        entrypoint: /ueransim/config/entrypoint.sh
+        dns: 10.100.200.50
+        # command: tail -f /var/log/dpkg.log
+        volumes:
+            - ./config/ue/ue2.yaml:/ueransim/config/uecfg.yaml
+            # - ./config/ue/ue2.yaml:/ueransim/config/uecfg2.yaml
+            # - ./config/ue/ue3.yaml:/ueransim/config/uecfg3.yaml
+            - ./ueransim/entrypoint.sh:/ueransim/config/entrypoint.sh
+            # - ./logs:/ueransim/logs
+            - ./logs/iperf-results:/ueransim/logs/iperf-results
+        cap_add:
+            - NET_ADMIN
+        devices:
+            - "/dev/net/tun"
+        networks:
+            ground:
+                aliases:
+                    - ueransim2.free5gc.org
         depends_on:
             - free5gc-amf
             - free5gc-upf1
             - free5gc-upf2
             - gnb1
             - gnb2
-            # - iperf-server
+            - ueransim1
+
+    ueransim3:
+        container_name: ueransim3
+        build:
+            context: ./ueransim
+        entrypoint: /ueransim/config/entrypoint.sh
+        dns: 10.100.200.50
+        # command: tail -f /var/log/dpkg.log
+        volumes:
+            - ./config/ue/ue3.yaml:/ueransim/config/uecfg.yaml
+            # - ./config/ue/ue2.yaml:/ueransim/config/uecfg2.yaml
+            # - ./config/ue/ue3.yaml:/ueransim/config/uecfg3.yaml
+            - ./ueransim/entrypoint.sh:/ueransim/config/entrypoint.sh
+            # - ./logs:/ueransim/logs
+            - ./logs/iperf-results:/ueransim/logs/iperf-results
+        cap_add:
+            - NET_ADMIN
+        devices:
+            - "/dev/net/tun"
+        networks:
+            ground:
+                aliases:
+                    - ueransim3.free5gc.org
+        depends_on:
+            - free5gc-amf
+            - free5gc-upf1
+            - free5gc-upf2
+            - gnb1
+            - gnb2
+            - ueransim2
+
+    ueransim4:
+        container_name: ueransim4
+        build:
+            context: ./ueransim
+        entrypoint: /ueransim/config/entrypoint.sh
+        dns: 10.100.200.50
+        # command: tail -f /var/log/dpkg.log
+        volumes:
+            - ./config/ue/ue4.yaml:/ueransim/config/uecfg.yaml
+            # - ./config/ue/ue2.yaml:/ueransim/config/uecfg2.yaml
+            # - ./config/ue/ue3.yaml:/ueransim/config/uecfg3.yaml
+            - ./ueransim/entrypoint.sh:/ueransim/config/entrypoint.sh
+            # - ./logs:/ueransim/logs
+            - ./logs/iperf-results:/ueransim/logs/iperf-results
+        cap_add:
+            - NET_ADMIN
+        devices:
+            - "/dev/net/tun"
+        networks:
+            ground:
+                aliases:
+                    - ueransim4.free5gc.org
+        depends_on:
+            - free5gc-amf
+            - free5gc-upf1
+            - free5gc-upf2
+            - gnb1
+            - gnb2
+            - ueransim3
 
     n3iwue:
         container_name: n3iwue
