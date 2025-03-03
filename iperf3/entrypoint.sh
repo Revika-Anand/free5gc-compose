@@ -20,13 +20,14 @@ route add -net 10.60.0.0/24 gw 10.102.200.40
 route add -net 10.61.0.0/24 gw 10.102.200.40
 route add -net 10.101.200.0/24 gw 10.102.200.40
 route add -net 10.100.200.0/24 gw 10.102.200.40
-iperf3 -s -p 5001 -i 1 &
-iperf3 -s -p 5002 -i 1 &
-iperf3 -s -p 5003 -i 1 &
-iperf3 -s -p 5004 -i 1 &
-iperf3 -s -p 5005 -i 1 &
-iperf3 -s -p 5006 -i 1 &
-iperf3 -s -p 5007 -i 1 &
-iperf3 -s -p 5008 -i 1 &
-iperf3 -s -p 5009 -i 1 &
-iperf3 -s -p 5010 -i 1
+tail -f /dev/null
+# iperf3 -s -p 5001 -i 1 &
+# iperf3 -s -p 5002 -i 1 &
+# iperf3 -s -p 5003 -i 1 &
+# iperf3 -s -p 5004 -i 1 &
+# iperf3 -s -p 5005 -i 1 &
+# iperf3 -s -p 5006 -i 1 &
+# iperf3 -s -p 5007 -i 1 &
+# iperf3 -s -p 5008 -i 1 &
+# iperf3 -s -p 5009 -i 1 &
+# iperf3 -s -p 5010 -i 1

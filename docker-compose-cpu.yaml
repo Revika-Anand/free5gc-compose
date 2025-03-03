@@ -1,22 +1,6 @@
 name: free5gc
 
 services:
-    # auto-verif:
-    #     container_name: auto-verif
-    #     build:
-    #         context: ../
-    #         dockerfile: Dockerfile
-    #     privileged: true
-    #     ports:
-    #         - "8090:8090"
-    #     command: go run .
-    #     volumes:
-    #         - /home/demo/AutoVerif/free5gc-compose/config:/app/src/pkg/config
-    #         - /home/demo/AutoVerif/free5gc-compose/files:/app/src/pkg/files
-    #     networks:
-    #         ground:
-    #             ipv4_address: 10.100.200.60
-
     core-dns:
         container_name: core-dns
         image: coredns/coredns:latest
@@ -28,15 +12,16 @@ services:
                 ipv4_address: 10.100.200.50
             satellite:
                 ipv4_address: 10.101.200.50
-        # entrypoint: ["/bin/sh", "-c"]
         command: -conf /etc/coredns/Corefile
         volumes:
             - "./config/Corefile:/etc/coredns/Corefile"
+        depends_on:
+            - ueransim
 
     i-router:
         container_name: i-router
         build:
-            context: ./router
+            context: ./irouter
             dockerfile: Dockerfile
         networks:
             util:
@@ -46,7 +31,6 @@ services:
             satellite:
                 ipv4_address: 10.101.200.40
         entrypoint: ["/bin/sh", "-c"]
-        privileged: true
         command:
             - |
                 route add -net 10.100.200.0/24 gw 10.100.200.40
@@ -55,7 +39,11 @@ services:
                 route add -net 10.60.0.0/24 gw 10.101.200.40
                 route add -net 10.61.0.0/24 gw 10.100.200.40
                 tail -f /dev/null
-        dns: 10.100.200.50
+        privileged: true
+        dns:
+            - 10.100.200.50
+            - 10.101.200.50
+            - 10.102.200.50
 
     iperf-server:
         container_name: iperf-server
@@ -70,7 +58,10 @@ services:
                 ipv4_address: 10.102.200.30
                 aliases:
                     - iperf-server.free5gc.org
-        dns: 10.102.200.50
+        dns:
+            - 10.100.200.50
+            - 10.101.200.50
+            - 10.102.200.50
         entrypoint: /iperf3/config/entrypoint.sh
         stdin_open: true
         volumes:
@@ -81,34 +72,42 @@ services:
         container_name: upf1
         environment:
             HOST: "UPF1"
-            env_file: ./entrypoint/.env
+            UPF1_NETWORK: ${UPF1_NETWORK}
         build:
             context: ./nf_upf
             args:
                 DEBUG_TOOLS: "true"
-        entrypoint: ./entrypoint/network_entrypoint_sh.sh
+        entrypoint: ["/bin/sh", "-c"]
         command:
             - |
-                route add -net 10.102.200.0/24 gw 10.101.200.40
+                ./network_entrypoint.sh
                 bash -c "./upf-iptables.sh && ./upf -c ./config/upfcfg.yaml"
         volumes:
             - ./config/upfcfg1.yaml:/free5gc/config/upfcfg.yaml
             - ./config/upf-iptables.sh:/free5gc/upf-iptables.sh
-            - ./entrypoint:/free5gc/entrypoint
+            - ./network_entrypoint.sh:/free5gc/network_entrypoint.sh
         # deploy:
         #     resources:
         #         limits:
         #             cpus: "0.5"
         cap_add:
             - NET_ADMIN
-        dns: 10.101.200.50
+        dns:
+            - 10.100.200.50
+            - 10.101.200.50
+            - 10.102.200.50
         networks:
+            #     # aliases:
+            #     #     "upf1.free5gc.org"
             ground:
                 aliases:
                     - upf1.free5gc.org
             satellite:
                 aliases:
                     - upf1.free5gc.org
+        depends_on:
+            - i-router
+            - iperf-server
 
     free5gc-upf2:
         container_name: upf2
@@ -116,26 +115,28 @@ services:
             context: ./nf_upf
             args:
                 DEBUG_TOOLS: "true"
-        entrypoint: ./entrypoint/network_entrypoint_sh.sh
+        entrypoint: ["/bin/sh", "-c"]
         environment:
             HOST: "UPF2"
-            env_file: ./entrypoint/.env
+            UPF2_NETWORK: ${UPF2_NETWORK}
         command:
             - |
-                HOST="upf2"
-                route add -net 10.102.200.0/24 gw 10.100.200.40
+                ./network_entrypoint.sh
                 bash -c "./upf-iptables.sh && ./upf -c ./config/upfcfg.yaml"
         volumes:
             - ./config/upfcfg2.yaml:/free5gc/config/upfcfg.yaml
             - ./config/upf-iptables.sh:/free5gc/upf-iptables.sh
-            - ./entrypoint:/free5gc/entrypoint
+            - ./network_entrypoint.sh:/free5gc/network_entrypoint.sh
         # deploy:
         #     resources:
         #         limits:
         #             cpus: "0.1"
         cap_add:
             - NET_ADMIN
-        dns: 10.100.200.50
+        dns:
+            - 10.100.200.50
+            - 10.101.200.50
+            - 10.102.200.50
         networks:
             satellite:
                 aliases:
@@ -143,6 +144,9 @@ services:
             ground:
                 aliases:
                     - upf2.free5gc.org
+        depends_on:
+            - i-router
+            - iperf-server
 
     db:
         container_name: mongodb
@@ -163,23 +167,27 @@ services:
             context: ./nf_nrf
             args:
                 DEBUG_TOOLS: "false"
-        entrypoint: ./entrypoint/network_entrypoint_sh.sh
+        entrypoint: ["/bin/sh", "-c"]
         privileged: true
-        dns: 10.100.200.50
+        dns:
+            - 10.100.200.50
+            - 10.101.200.50
+            - 10.102.200.50
         command:
             - |
+                ./network_entrypoint.sh
                 ./nrf -c ./config/nrfcfg.yaml
         expose:
             - "8000"
         volumes:
             - ./config/nrfcfg.yaml:/free5gc/config/nrfcfg.yaml
             - ./cert:/free5gc/cert
-            - ./entrypoint:/free5gc/entrypoint
+            - ./network_entrypoint.sh:/free5gc/network_entrypoint.sh
         environment:
             DB_URI: mongodb://db/free5gc
             GIN_MODE: release
             HOST: "NRF"
-            env_file: ./entrypoint/.env
+            NRF_NETWORK: ${NRF_NETWORK}
         networks:
             satellite:
                 aliases:
@@ -196,24 +204,28 @@ services:
             context: ./nf_amf
             args:
                 DEBUG_TOOLS: "false"
-        entrypoint: /free5gc/entrypoint/network_entrypoint_sh.sh
+        entrypoint: ["/bin/sh", "-c"]
         privileged: true
-        dns: 10.100.200.50
+        dns:
+            - 10.100.200.50
+            - 10.101.200.50
+            - 10.102.200.50
         cap_add:
             - NET_ADMIN
         command:
             - |
+                ./network_entrypoint.sh
                 ./amf -c ./config/amfcfg.yaml
         expose:
             - "8000"
         volumes:
             - ./config/amfcfg.yaml:/free5gc/config/amfcfg.yaml
             - ./cert:/free5gc/cert
-            - ./entrypoint:/free5gc/entrypoint
+            - ./network_entrypoint.sh:/free5gc/network_entrypoint.sh
         environment:
             GIN_MODE: release
             HOST: "AMF"
-            env_file: ./entrypoint/.env
+            AMF_NETWORK: ${AMF_NETWORK}
         devices:
             - "/dev/net/tun"
         networks:
@@ -233,21 +245,25 @@ services:
             args:
                 DEBUG_TOOLS: "false"
         privileged: true
-        entrypoint: ./entrypoint/network_entrypoint_sh.sh
-        dns: 10.100.200.50
+        entrypoint: ["/bin/sh", "-c"]
+        dns:
+            - 10.100.200.50
+            - 10.101.200.50
+            - 10.102.200.50
         command:
             - |
+                ./network_entrypoint.sh
                 ./ausf -c ./config/ausfcfg.yaml
         expose:
             - "8000"
         volumes:
             - ./config/ausfcfg.yaml:/free5gc/config/ausfcfg.yaml
             - ./cert:/free5gc/cert
-            - ./entrypoint:/free5gc/entrypoint
+            - ./network_entrypoint.sh:/free5gc/network_entrypoint.sh
         environment:
             GIN_MODE: release
             HOST: "AUSF"
-            env_file: ./entrypoint/.env
+            AUSF_NETWORK: ${AUSF_NETWORK}
         networks:
             satellite:
                 aliases:
@@ -265,21 +281,25 @@ services:
             args:
                 DEBUG_TOOLS: "false"
         privileged: true
-        dns: 10.100.200.50
-        entrypoint: ./entrypoint/network_entrypoint_sh.sh
+        dns:
+            - 10.100.200.50
+            - 10.101.200.50
+            - 10.102.200.50
+        entrypoint: ["/bin/sh", "-c"]
         command:
             - |
+                ./network_entrypoint.sh
                 ./nssf -c ./config/nssfcfg.yaml
         expose:
             - "8000"
         volumes:
             - ./config/nssfcfg.yaml:/free5gc/config/nssfcfg.yaml
             - ./cert:/free5gc/cert
-            - ./entrypoint:/free5gc/entrypoint
+            - ./network_entrypoint.sh:/free5gc/network_entrypoint.sh
         environment:
             GIN_MODE: release
             HOST: "NSSF"
-            env_file: ./entrypoint/.env
+            NSSF_NETWORK: ${NSSF_NETWORK}
         networks:
             satellite:
                 aliases:
@@ -297,21 +317,25 @@ services:
             args:
                 DEBUG_TOOLS: "false"
         privileged: true
-        dns: 10.100.200.50
-        entrypoint: ./entrypoint/network_entrypoint_sh.sh
+        dns:
+            - 10.100.200.50
+            - 10.101.200.50
+            - 10.102.200.50
+        entrypoint: ["/bin/sh", "-c"]
         command:
             - |
+                ./network_entrypoint.sh
                 ./pcf -c ./config/pcfcfg.yaml
         expose:
             - "8000"
         volumes:
             - ./config/pcfcfg.yaml:/free5gc/config/pcfcfg.yaml
             - ./cert:/free5gc/cert
-            - ./entrypoint:/free5gc/entrypoint
+            - ./network_entrypoint.sh:/free5gc/network_entrypoint.sh
         environment:
             GIN_MODE: release
             HOST: "PCF"
-            env_file: ./entrypoint/.env
+            PCF_NETWORK: ${PCF_NETWORK}
         networks:
             satellite:
                 aliases:
@@ -329,12 +353,16 @@ services:
             args:
                 DEBUG_TOOLS: "false"
         privileged: true
-        dns: 10.100.200.50
+        dns:
+            - 10.100.200.50
+            - 10.101.200.50
+            - 10.102.200.50
         cap_add:
             - NET_ADMIN
-        entrypoint: ./entrypoint/network_entrypoint_sh.sh
+        entrypoint: ["/bin/sh", "-c"]
         command:
             - |
+                ./network_entrypoint.sh
                 ./smf -c ./config/smfcfg.yaml -u ./config/uerouting.yaml
         expose:
             - "8000"
@@ -342,11 +370,11 @@ services:
             - ./config/smfcfg.yaml:/free5gc/config/smfcfg.yaml
             - ./config/uerouting.yaml:/free5gc/config/uerouting.yaml
             - ./cert:/free5gc/cert
-            - ./entrypoint:/free5gc/entrypoint
+            - ./network_entrypoint.sh:/free5gc/network_entrypoint.sh
         environment:
             GIN_MODE: release
             HOST: "SMF"
-            env_file: ./entrypoint/.env
+            SMF_NETWORK: ${SMF_NETWORK}
         devices:
             - "/dev/net/tun"
         networks:
@@ -368,21 +396,25 @@ services:
             args:
                 DEBUG_TOOLS: "false"
         privileged: true
-        dns: 10.100.200.50
-        entrypoint: ./entrypoint/network_entrypoint_sh.sh
+        dns:
+            - 10.100.200.50
+            - 10.101.200.50
+            - 10.102.200.50
+        entrypoint: ["/bin/sh", "-c"]
         command:
             - |
+                ./network_entrypoint.sh
                 ./udm -c ./config/udmcfg.yaml
         expose:
             - "8000"
         volumes:
             - ./config/udmcfg.yaml:/free5gc/config/udmcfg.yaml
             - ./cert:/free5gc/cert
-            - ./entrypoint:/free5gc/entrypoint
+            - ./network_entrypoint.sh:/free5gc/network_entrypoint.sh
         environment:
             GIN_MODE: release
             HOST: "UDM"
-            env_file: ./entrypoint/.env
+            UDM_NETWORK: ${UDM_NETWORK}
         networks:
             satellite:
                 aliases:
@@ -401,22 +433,26 @@ services:
             args:
                 DEBUG_TOOLS: "false"
         privileged: true
-        dns: 10.100.200.50
-        entrypoint: ./entrypoint/network_entrypoint_sh.sh
+        dns:
+            - 10.100.200.50
+            - 10.101.200.50
+            - 10.102.200.50
+        entrypoint: ["/bin/sh", "-c"]
         command:
             - |
+                ./network_entrypoint.sh
                 ./udr -c ./config/udrcfg.yaml
         expose:
             - "8000"
         volumes:
             - ./config/udrcfg.yaml:/free5gc/config/udrcfg.yaml
             - ./cert:/free5gc/cert
-            - ./entrypoint:/free5gc/entrypoint
+            - ./network_entrypoint.sh:/free5gc/network_entrypoint.sh
         environment:
             DB_URI: mongodb://db/free5gc
             GIN_MODE: release
             HOST: "UDR"
-            env_file: ./entrypoint/.env
+            UDR_NETWORK: ${UDR_NETWORK}
         networks:
             satellite:
                 aliases:
@@ -434,11 +470,15 @@ services:
             context: ./nf_chf
             args:
                 DEBUG_TOOLS: "false"
-        entrypoint: ./entrypoint/network_entrypoint_sh.sh
+        entrypoint: ["/bin/sh", "-c"]
         privileged: true
-        dns: 10.100.200.50
+        dns:
+            - 10.100.200.50
+            - 10.101.200.50
+            - 10.102.200.50
         command:
             - |
+                ./network_entrypoint.sh
                 ./chf -c ./config/chfcfg.yaml
         expose:
             - "8000"
@@ -446,12 +486,12 @@ services:
         volumes:
             - ./config/chfcfg.yaml:/free5gc/config/chfcfg.yaml
             - ./cert:/free5gc/cert
-            - ./entrypoint:/free5gc/entrypoint
+            - ./network_entrypoint.sh:/free5gc/network_entrypoint.sh
         environment:
             DB_URI: mongodb://db/free5gc
             GIN_MODE: release
             HOST: "CHF"
-            env_file: ./entrypoint/.env
+            CHF_NETWORK: ${CHF_NETWORK}
         networks:
             satellite:
                 aliases:
@@ -470,20 +510,24 @@ services:
             context: ./nf_n3iwf
             args:
                 DEBUG_TOOLS: "false"
-        entrypoint: ./entrypoint/network_entrypoint_sh.sh
+        entrypoint: ["/bin/sh", "-c"]
         privileged: true
-        dns: 10.100.200.50
+        dns:
+            - 10.100.200.50
+            - 10.101.200.50
+            - 10.102.200.50
         command:
             - |
+                ./network_entrypoint.sh
                 sh -c "./n3iwf-ipsec.sh && ./n3iwf -c ./config/n3iwfcfg.yaml"
         volumes:
             - ./config/n3iwfcfg.yaml:/free5gc/config/n3iwfcfg.yaml
             - ./config/n3iwf-ipsec.sh:/free5gc/n3iwf-ipsec.sh
-            - ./entrypoint:/free5gc/entrypoint
+            - ./network_entrypoint.sh:/free5gc/network_entrypoint.sh
         environment:
             GIN_MODE: release
             HOST: "N3IWF"
-            env_file: ./entrypoint/.env
+            N3IWF_NETWORK: ${N3IWF_NETWORK}
         cap_add:
             - NET_ADMIN
         networks:
@@ -507,7 +551,10 @@ services:
             args:
                 DEBUG_TOOLS: "false"
         command: ./webui -c ./config/webuicfg.yaml
-        dns: 10.100.200.50
+        dns:
+            - 10.100.200.50
+            - 10.101.200.50
+            - 10.102.200.50
         expose:
             - "2121"
         volumes:
@@ -528,17 +575,21 @@ services:
         container_name: gnb1
         build:
             context: ./ueransim
-        entrypoint: ./entrypoint/network_entrypoint_sh.sh
+        entrypoint: ["/bin/sh", "-c"]
         environment:
             HOST: "GNB1"
-            env_file: ./entrypoint/.env
-        dns: 10.101.200.50
+            GNB1_NETWORK: ${GNB1_NETWORK}
+        dns:
+            - 10.100.200.50
+            - 10.101.200.50
+            - 10.102.200.50
         command:
             - |
+                ./network_entrypoint.sh
                 ./nr-gnb -c ./config/gnbcfg.yaml
         volumes:
             - ./config/gnbcfg1.yaml:/ueransim/config/gnbcfg.yaml
-            - ./entrypoint:/ueransim/entrypoint
+            - ./network_entrypoint.sh:/ueransim/network_entrypoint.sh
         cap_add:
             - NET_ADMIN
         devices:
@@ -560,17 +611,21 @@ services:
         container_name: gnb2
         build:
             context: ./ueransim
-        dns: 10.100.200.50
+        dns:
+            - 10.100.200.50
+            - 10.101.200.50
+            - 10.102.200.50
         environment:
             HOST: "GNB2"
-            env_file: ./entrypoint/.env
-        entrypoint: ./entrypoint/network_entrypoint_sh.sh
+            GNB2_NETWORK: ${GNB2_NETWORK}
+        entrypoint: ["/bin/sh", "-c"]
         command:
             - |
+                ./network_entrypoint.sh
                 ./nr-gnb -c ./config/gnbcfg.yaml
         volumes:
             - ./config/gnbcfg2.yaml:/ueransim/config/gnbcfg.yaml
-            - ./entrypoint:/ueransim/entrypoint
+            - ./network_entrypoint.sh:/ueransim/network_entrypoint.sh
         cap_add:
             - NET_ADMIN
         devices:
@@ -592,21 +647,26 @@ services:
         container_name: ueransim
         build:
             context: ./ueransim
-        entrypoint: ./entrypoint/network_entrypoint_sh.sh
+        entrypoint: ["/bin/sh", "-c"]
         environment:
             HOST: "UERANSIM"
-            env_file: ./entrypoint/.env
-        dns: 10.100.200.50
+            UERANSIM_NETWORK: ${UERANSIM_NETWORK}
+        dns:
+            - 10.100.200.50
+            - 10.101.200.50
+            - 10.102.200.50
         volumes:
             - ./config/ue/ue1.yaml:/ueransim/config/uecfg1.yaml
             - ./config/ue/ue2.yaml:/ueransim/config/uecfg2.yaml
             # - ./config/ue/ue3.yaml:/ueransim/config/uecfg3.yaml
             - ./ueransim/entrypoint.sh:/ueransim/config/entrypoint.sh
             - ./logs/iperf-results:/ueransim/logs/iperf-results
-            - ./entrypoint:/ueransim/entrypoint
+            - ./network_entrypoint.sh:/ueransim/network_entrypoint.sh
         command:
             - |
-                ./nr-ue -c ./config/uecfg1.yaml
+                ./network_entrypoint.sh
+                ./nr-ue -c ./config/uecfg1.yaml &
+                ./nr-ue -c ./config/uecfg2.yaml
         cap_add:
             - NET_ADMIN
         devices:
@@ -630,7 +690,10 @@ services:
         build:
             context: ./n3iwue
         command: sleep infinity
-        dns: 10.100.200.50
+        dns:
+            - 10.100.200.50
+            - 10.101.200.50
+            - 10.102.200.50
         volumes:
             - ./config/n3uecfg.yaml:/n3iwue/config/n3ue.yaml
         cap_add:

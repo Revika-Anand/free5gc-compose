@@ -22,7 +22,7 @@ services:
     i-router:
         container_name: i-router
         build:
-            context: ./router
+            context: ./irouter
             dockerfile: Dockerfile
         networks:
             util:
@@ -68,16 +68,17 @@ services:
                 route add -net 10.61.0.0/24 gw 10.102.200.40
                 route add -net 10.101.200.0/24 gw 10.102.200.40
                 route add -net 10.100.200.0/24 gw 10.102.200.40
-                iperf3 -s -p 5001 -i 1 &
-                iperf3 -s -p 5002 -i 1 &
-                iperf3 -s -p 5003 -i 1 &
-                iperf3 -s -p 5004 -i 1 &
-                iperf3 -s -p 5005 -i 1 &
-                iperf3 -s -p 5006 -i 1 &
-                iperf3 -s -p 5007 -i 1 &
-                iperf3 -s -p 5008 -i 1 &
-                iperf3 -s -p 5009 -i 1 &
-                iperf3 -s -p 5010 -i 1
+                tail -f /dev/null
+                # iperf3 -s -p 5001 -i 1 &
+                # iperf3 -s -p 5002 -i 1 &
+                # iperf3 -s -p 5003 -i 1 &
+                # iperf3 -s -p 5004 -i 1 &
+                # iperf3 -s -p 5005 -i 1 &
+                # iperf3 -s -p 5006 -i 1 &
+                # iperf3 -s -p 5007 -i 1 &
+                # iperf3 -s -p 5008 -i 1 &
+                # iperf3 -s -p 5009 -i 1 &
+                # iperf3 -s -p 5010 -i 1
         # volumes:
         #     - ./logs:/logs
 
@@ -110,6 +111,9 @@ services:
                     - upf1.free5gc.org
             # public:
             #     ipv4_address: 10.101.200.20
+        depends_on:
+            - i-router
+            - iperf-server
 
     free5gc-upf2:
         container_name: upf2
@@ -137,8 +141,9 @@ services:
             ground:
                 aliases:
                     - upf2.free5gc.org
-            # private:
-            #     ipv4_address: 10.102.200.20
+        depends_on:
+            - i-router
+            - iperf-server
 
     db:
         container_name: mongodb
